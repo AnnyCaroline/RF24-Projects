@@ -1,0 +1,76 @@
+#include "out.ceu"
+#include "usart.ceu"
+#include "string.ceu"
+#include "wclock.ceu"
+
+#include "int0.ceu"
+#include "spi.ceu"
+
+#define NRF24L01_IRQ INT0
+#include "nrf24l01.ceu"
+
+output high/low OUT_04;
+
+var Lock spi = _;
+var NRF24L01_Data nrf = val NRF24L01_Data(&spi, 8, 7, _,_,_,_,_,_,_);
+spawn NRF24L01_Init(&nrf);
+await nrf.ok;
+
+var int address = 2; // 2 ou 3
+var int lastRecId = 0;
+
+spawn USART_Init(9600);
+
+var high/low ledState = low;
+emit OUT_04(ledState);
+
+var[20] byte str;
+call String_Append_STR(&str, "Ceu - nrf-rx - ");
+call String_Append_INT(&str, address, _);
+call String_Append_STR(&str, "\r\n");
+await USART_Tx(&str);
+
+loop do
+    var[20] byte resp = [].."Aguardando ... \r\n";
+    await USART_Tx(&resp);
+
+    var[1] byte buf = [];
+    await NRF24L01_Rx(&nrf, &buf);
+
+    var[50] byte msg;
+    var int rec_ttl     = buf[0]/100;
+    var int rec_id      = (buf[0]%100)/10;
+    var int rec_address = (buf[0]%100)%10;
+    call String_Append_STR(&msg, "TTL: ");
+    call String_Append_INT(&msg, buf[0], _);
+    call String_Append_STR(&msg, " - id: ");
+    call String_Append_INT(&msg, rec_id, _);
+    call String_Append_STR(&msg, " - address: ");
+    call String_Append_INT(&msg, rec_address, _);
+    call String_Append_STR(&msg, "\r\n");
+    await USART_Tx(&msg);
+
+    if ( (rec_address) == address ) then
+        //chegou no lugar certo
+
+        if ((rec_id > lastRecId) or (lastRecId==9 and rec_address==0)) then
+            lastRecId = rec_id%10;
+            ledState = not ledState;
+            emit OUT_04(ledState);
+        end
+        //senão, é id duplicado => ignoro
+
+    else
+        //não sou o destino, então
+        //atualizo TTL
+        var int ttl = rec_ttl - 1;
+        //retransmito
+        if (ttl > 0) then
+            var[20] byte ret = [].."Retransmitir ... \r\n";
+            await USART_Tx(&ret);
+            var[1] byte rbuf = [ttl*10+rec_address];
+
+            await NRF24L01_Tx(&nrf, &rbuf);
+        end
+    end
+end

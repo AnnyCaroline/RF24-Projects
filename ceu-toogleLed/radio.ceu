@@ -1,0 +1,62 @@
+#include "out.ceu"
+#include "pcint1.ceu"
+#include "usart.ceu"
+#include "string.ceu"
+
+#include "int0.ceu"
+#include "spi.ceu"
+
+#define NRF24L01_IRQ INT0
+#include "nrf24l01.ceu"
+
+output high/low OUT_04;
+call PCINT1_Enable(_PCINT8, on); // UNO=A0, MEGA=D0
+call PCINT1_Enable(_PCINT9, on); // UNO=A1
+
+var Lock spi = _;
+var NRF24L01_Data nrf = val NRF24L01_Data(&spi, 8, 7, _,_,_,_,_,_,_);
+spawn NRF24L01_Init(&nrf);
+await nrf.ok;
+
+var int ttl = 3; //default ttl
+
+spawn USART_Init(9600);
+
+var[20] byte str = [].."Ceu - nrf-tx - \r\n";
+
+await USART_Tx(&str);
+
+emit OUT_04(low);
+
+var int idBtn1 = 1;
+var int idBtn2 = 1;
+
+every PCINT1 do
+    if (call PCINT1_Get(_PCINT8) == high) then
+        emit OUT_04(high); 
+
+        //var[1] byte buf = [ttl*100+idBtn1*10+2];
+        var[1] byte buf = [128]; //só vai até 255. Tenho q mandar o ttl, o id e endereco de destino por aqui.
+        await NRF24L01_Tx(&nrf, &buf);
+
+        var[20] byte bufUsart = [].."Btn1\r\n";
+        await USART_Tx(&bufUsart);
+        
+        idBtn1 = (idBtn1+1)%10;
+        emit OUT_04(low);
+    else/if (call PCINT1_Get(_PCINT9) == high) then
+        emit OUT_04(high); 
+
+        var[1] byte buf = [ttl*100+idBtn2*10+3];
+        await NRF24L01_Tx(&nrf, &buf);
+
+        // var[20] byte bufUsart = [].."Btn2\r\n";
+
+        var[20] byte bufUsart;
+        call String_Append_INT(&bufUsart, ttl*100+idBtn2*10+3, _);
+        await USART_Tx(&bufUsart);
+        
+        idBtn2 = (idBtn2+1)%10;
+        emit OUT_04(low);
+    end
+end
