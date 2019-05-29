@@ -1,0 +1,73 @@
+#include "out.ceu"
+#include "usart.ceu"
+#include "string.ceu"
+#include "wclock.ceu"
+
+#include "int0.ceu"
+#include "spi.ceu"
+
+#define NRF24L01_IRQ INT0
+#include "nrf24l01.ceu"
+
+output high/low OUT_04;
+
+var Lock spi = _;
+var NRF24L01_Data nrf = val NRF24L01_Data(&spi, 8, 7, _,_,_,_,_,_,_);
+spawn NRF24L01_Init(&nrf);
+await nrf.ok;
+
+var byte seq = 0<<6; //espera um 00xx xxxx
+var byte lastSeq = 1<<6; //ultimo que recebi foi um 01xx xxxx
+
+spawn USART_Init(9600);
+
+var high/low ledState = low;
+emit OUT_04(ledState);
+
+var[20] byte str;
+call String_Append_STR(&str, "Ceu - nrf-rx\r\n");
+await USART_Tx(&str);
+
+loop do
+    var[20] byte bufUsart1 = [].."Aguardando ... \r\n";
+    await USART_Tx(&bufUsart1);
+
+    var[1] byte bufRx = [];
+    await NRF24L01_Rx(&nrf, &bufRx);
+
+    // recebi algo
+    // verifico se é uma mensagem (0xxx xxxx)
+    if (bufRx[0] & (1<<7) == (0<<7)) then
+
+        var byte recSeq = bufRx[0] & (1<<6);
+
+        // verifico se é do número de sequencia que eu quero
+        if (recSeq == seq) then
+
+            // mudo o estado do led
+            ledState = not ledState;
+            emit OUT_04(ledState);
+
+            // troco o seq
+            if (seq == 0) then
+                seq = (1<<6);
+            else
+                seq = (0<<6);
+            end
+
+            lastSeq = recSeq;
+        end
+
+        //envia o Ack (efetivamente)
+        var[1] byte rbuf = [lastSeq | (1<<7)]; //1<seq>xx xxxx, p/ indicar que é um ACK
+        await NRF24L01_Tx(&nrf, &rbuf);
+
+        var[20] byte bufUsart2;
+        call String_Append_STR(&bufUsart2, "<");
+        call String_Append_INT(&bufUsart2, lastSeq | (1<<7), _);
+        call String_Append_STR(&bufUsart2, "\n");
+        await USART_Tx(&bufUsart2);        
+
+    end
+    // se não for uma mensagem, ignoro    
+end
