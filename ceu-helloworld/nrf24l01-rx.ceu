@@ -1,12 +1,14 @@
+#include "usart.ceu"
+
 #include "int0.ceu"
 #include "spi.ceu"
 
 #define NRF24L01_IRQ INT0
 #include "nrf24l01.ceu"
 
-{Serial.begin(9600);}
-{Serial.println("Ceu - nrf-rx");}
-{_DELAY(20);}
+spawn USART_Init(9600);
+var[20] byte str = [].."Ceu - nrf-rx\r\n";
+await USART_Tx(&str);
 
 var Lock spi = _;
 
@@ -16,8 +18,7 @@ await nrf.ok;
 
 var int i;
 loop i do
-    var[1] byte buf = [];
-    //var[3] byte buf = [];
+    var[15] byte buf = [];
     await NRF24L01_Rx(&nrf, &buf);
-    {Serial.print("> "); Serial.println(@buf[0]); _DELAY(10);}
+    await USART_Tx(&buf);
 end

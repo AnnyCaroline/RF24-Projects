@@ -1,0 +1,64 @@
+#include "out.ceu"
+#include "usart.ceu"
+#include "string.ceu"
+#include "wclock.ceu"
+
+#include "int0.ceu"
+#include "spi.ceu"
+
+#define NRF24L01_IRQ INT0
+#include "nrf24l01.ceu"
+
+output high/low OUT_04;
+
+var Lock spi = _;
+var NRF24L01_Data nrf = val NRF24L01_Data(&spi, 8, 7, _,_,_,_,_,_,_);
+spawn NRF24L01_Init(&nrf);
+await nrf.ok;
+
+var int ack = 1;
+
+spawn USART_Init(9600);
+
+var high/low ledState = low;
+emit OUT_04(ledState);
+
+var[20] byte str;
+call String_Append_STR(&str, "Ceu - nrf-rx\r\n");
+await USART_Tx(&str);
+
+loop do
+    var[20] byte resp = [].."Aguardando ... \r\n";
+    await USART_Tx(&resp);
+
+    var[1] byte buf = [];
+    await NRF24L01_Rx(&nrf, &buf);
+
+    var[20] byte msg;
+    var int rec_ack = buf[0];
+    call String_Append_STR(&msg, "Ack: ");
+    call String_Append_INT(&msg, rec_ack, _);
+    call String_Append_INT(&msg, ack, _);
+    call String_Append_STR(&msg, "\r\n");
+    await USART_Tx(&msg);
+
+    if ( rec_ack == ack ) then
+        //se é o ack que eu estava esperando
+
+        ledState = not ledState;
+        emit OUT_04(ledState);
+
+        var[20] byte ret = [].."Chegou\r\n";
+        await USART_Tx(&ret);
+
+        if (ack==1) then
+            ack = 2;
+        else
+            ack = 1;
+        end      
+    end
+
+    //envia o Ack (efetivamente)
+    var[1] byte rbuf = [rec_ack];
+    await NRF24L01_Tx(&nrf, &rbuf);
+end

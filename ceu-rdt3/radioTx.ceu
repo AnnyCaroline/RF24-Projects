@@ -1,0 +1,78 @@
+#include "out.ceu"
+#include "pcint1.ceu"
+#include "usart.ceu"
+#include "string.ceu"
+
+#include "int0.ceu"
+#include "spi.ceu"
+
+#define NRF24L01_IRQ INT0
+#include "nrf24l01.ceu"
+
+output high/low OUT_04;
+call PCINT1_Enable(_PCINT8, on); // UNO=A0, MEGA=D0
+call PCINT1_Enable(_PCINT9, on); // UNO=A1
+
+var Lock spi = _;
+var NRF24L01_Data nrf = val NRF24L01_Data(&spi, 8, 7, _,_,_,_,_,_,_);
+spawn NRF24L01_Init(&nrf);
+await nrf.ok;
+
+var int timeout = 300; //ms
+
+spawn USART_Init(9600);
+
+// var[5] byte str = [].."tx\r\n";
+// await USART_Tx(&str);
+
+emit OUT_04(low);
+
+var int ack = 1; //1 ou 2
+
+loop do
+    await PCINT1;
+
+    if (call PCINT1_Get(_PCINT8) == high) then
+        emit OUT_04(high); 
+
+        loop do
+            par/or do
+                await (timeout)ms;
+                var[2] byte bufUsart;
+                call String_Append_STR(&bufUsart, "t");
+                //await FOREVER;
+            with
+                var[3] byte bufUsart;
+                call String_Append_STR(&bufUsart, ">");
+                call String_Append_INT(&bufUsart, ack, _);
+                await USART_Tx(&bufUsart);   
+                
+                var[1] byte buf = [ack];
+                await NRF24L01_Tx(&nrf, &buf);
+                     
+                var[1] byte bufRx;
+                await NRF24L01_Rx(&nrf, &bufRx);
+
+                var[3] byte bufUsart;
+                call String_Append_INT(&bufUsart, bufRx[0], _);
+                await USART_Tx(&bufUsart); 
+
+                if (bufRx[0] == ack) then
+                    if (ack==1) then
+                        ack = 2;
+                    else
+                        ack = 1;
+                    end                    
+                    //é o ack que eu esperava
+                end
+                //n é o ack que eu esperava. Só ignoro
+
+                break;
+            end
+        end
+
+        emit OUT_04(low);
+    end
+
+    await 100ms; //debounce
+end

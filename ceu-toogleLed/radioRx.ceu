@@ -17,7 +17,7 @@ spawn NRF24L01_Init(&nrf);
 await nrf.ok;
 
 var int address = 2; // 2 ou 3
-var int lastRecId = 0;
+var int expectedId = 1;
 
 spawn USART_Init(9600);
 
@@ -38,11 +38,11 @@ loop do
     await NRF24L01_Rx(&nrf, &buf);
 
     var[50] byte msg;
-    var int rec_ttl     = buf[0]/100;
-    var int rec_id      = (buf[0]%100)/10;
+    var int rec_id      = buf[0]/100;
+    var int rec_ttl     = (buf[0]%100)/10;
     var int rec_address = (buf[0]%100)%10;
     call String_Append_STR(&msg, "TTL: ");
-    call String_Append_INT(&msg, buf[0], _);
+    call String_Append_INT(&msg, rec_ttl, _);
     call String_Append_STR(&msg, " - id: ");
     call String_Append_INT(&msg, rec_id, _);
     call String_Append_STR(&msg, " - address: ");
@@ -53,10 +53,14 @@ loop do
     if ( (rec_address) == address ) then
         //chegou no lugar certo
 
-        if ((rec_id > lastRecId) or (lastRecId==9 and rec_address==0)) then
-            lastRecId = rec_id%10;
+        if (rec_id == expectedId) then
             ledState = not ledState;
             emit OUT_04(ledState);
+        end
+        if (expectedId == 1) then
+            expectedId = 2;
+        else
+            expectedId = 1;
         end
         //senão, é id duplicado => ignoro
 
@@ -68,7 +72,7 @@ loop do
         if (ttl > 0) then
             var[20] byte ret = [].."Retransmitir ... \r\n";
             await USART_Tx(&ret);
-            var[1] byte rbuf = [ttl*10+rec_address];
+            var[1] byte rbuf = [rec_id*100 + ttl*10 + rec_address];
 
             await NRF24L01_Tx(&nrf, &rbuf);
         end

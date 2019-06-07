@@ -18,45 +18,55 @@ var NRF24L01_Data nrf = val NRF24L01_Data(&spi, 8, 7, _,_,_,_,_,_,_);
 spawn NRF24L01_Init(&nrf);
 await nrf.ok;
 
-var int ttl = 3; //default ttl
+var int ttl = 3; //default ttl - [1,5]
 
 spawn USART_Init(9600);
 
-var[20] byte str = [].."Ceu - nrf-tx - \r\n";
+var[20] byte str = [].."Ceu - nrf-tx\r\n";
 
 await USART_Tx(&str);
 
 emit OUT_04(low);
 
-var int idBtn1 = 1;
+var int idBtn1 = 1; //1 ou 2 //0 n dá
 var int idBtn2 = 1;
 
 every PCINT1 do
     if (call PCINT1_Get(_PCINT8) == high) then
         emit OUT_04(high); 
 
-        //var[1] byte buf = [ttl*100+idBtn1*10+2];
-        var[1] byte buf = [128]; //só vai até 255. Tenho q mandar o ttl, o id e endereco de destino por aqui.
+        var[1] byte buf = [idBtn1*100+ttl*10+2]; //até 255
         await NRF24L01_Tx(&nrf, &buf);
 
         var[20] byte bufUsart = [].."Btn1\r\n";
         await USART_Tx(&bufUsart);
         
-        idBtn1 = (idBtn1+1)%10;
+        if (idBtn1==1) then
+            idBtn1 = 2;
+        else
+            idBtn1 = 1;
+        end
+
         emit OUT_04(low);
+
     else/if (call PCINT1_Get(_PCINT9) == high) then
         emit OUT_04(high); 
 
-        var[1] byte buf = [ttl*100+idBtn2*10+3];
+        var[1] byte buf = [idBtn2*100+ttl*10+3];
         await NRF24L01_Tx(&nrf, &buf);
 
         // var[20] byte bufUsart = [].."Btn2\r\n";
 
         var[20] byte bufUsart;
-        call String_Append_INT(&bufUsart, ttl*100+idBtn2*10+3, _);
+        call String_Append_INT(&bufUsart, idBtn2*100+ttl*10+3, _);
         await USART_Tx(&bufUsart);
         
-        idBtn2 = (idBtn2+1)%10;
+        if (idBtn2==1) then
+            idBtn2 = 2;
+        else
+            idBtn2 = 1;
+        end
+
         emit OUT_04(low);
     end
 end
