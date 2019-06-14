@@ -16,7 +16,7 @@ var NRF24L01_Data nrf = val NRF24L01_Data(&spi, 8, 7, _,_,_,_,_,_,_);
 spawn NRF24L01_Init(&nrf);
 await nrf.ok;
 
-var int address = 2; // 2 ou 3
+var int address = 3; // 2 ou 3
 var int expectedId = 1;
 
 spawn USART_Init(9600);
@@ -24,11 +24,11 @@ spawn USART_Init(9600);
 var high/low ledState = low;
 emit OUT_04(ledState);
 
-var[20] byte str;
-call String_Append_STR(&str, "Ceu - nrf-rx - ");
-call String_Append_INT(&str, address, _);
-call String_Append_STR(&str, "\r\n");
-await USART_Tx(&str);
+// var[20] byte str;
+// call String_Append_STR(&str, "Ceu - nrf-rx - ");
+// call String_Append_INT(&str, address, _);
+// call String_Append_STR(&str, "\r\n");
+// await USART_Tx(&str);
 
 loop do
     var[20] byte resp = [].."Aguardando ... \r\n";
